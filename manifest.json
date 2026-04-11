@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "SSL Expiry Monitor",
+  "version": "1.1",
+  "description": "Периодическая проверка сроков действия SSL сертификатов",
+  "permissions": [
+    "alarms",
+    "storage",
+    "notifications"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Состояние SSL",
+    "default_popup": "popup.html" 
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  }
+}

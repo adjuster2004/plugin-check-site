@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: sans-serif; padding: 15px; width: 400px; }
+        label { display: block; margin-top: 15px; font-weight: bold; font-size: 14px; }
+        input[type="text"], input[type="number"], input[type="time"], textarea { 
+            width: 100%; box-sizing: border-box; margin-top: 5px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;
+        }
+        textarea { height: 80px; resize: vertical; }
+        
+        .days-group { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+        .day-label { font-weight: normal; font-size: 13px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+        
+        .controls { margin-top: 20px; display: flex; gap: 8px; flex-wrap: wrap; }
+        button { cursor: pointer; padding: 10px; border: none; background: #eee; border-radius: 4px; font-weight: bold; }
+        button.primary { background: #0052cc; color: white; flex-grow: 1; }
+        button.primary:hover { background: #0047b3; }
+        button.secondary { flex-grow: 1; }
+        
+        #status { margin-top: 15px; font-weight: bold; text-align: center; height: 20px; }
+    </style>
+</head>
+<body>
+    <h2>Настройки SSL Monitor</h2>
+    
+    <label>URL Docker-контейнера (API):</label>
+    <input type="text" id="apiUrl" placeholder="Например: http://192.168.1.50:9090/ или https://api.my-domain.com/">
+
+    <label>Домены для проверки (через запятую):</label>
+    <textarea id="domains" placeholder="example.com, internal.corp.local"></textarea>
+
+    <label>Предупреждать, если осталось дней менее:</label>
+    <input type="number" id="warningDays" value="14">
+
+    <label>Время ежедневной проверки:</label>
+    <input type="time" id="checkTime" value="10:00">
+
+    <label>Дни проведения проверок:</label>
+    <div class="days-group">
+        <label class="day-label"><input type="checkbox" name="days" value="1"> Пн</label>
+        <label class="day-label"><input type="checkbox" name="days" value="2"> Вт</label>
+        <label class="day-label"><input type="checkbox" name="days" value="3"> Ср</label>
+        <label class="day-label"><input type="checkbox" name="days" value="4"> Чт</label>
+        <label class="day-label"><input type="checkbox" name="days" value="5"> Пт</label>
+        <label class="day-label"><input type="checkbox" name="days" value="6"> Сб</label>
+        <label class="day-label"><input type="checkbox" name="days" value="0"> Вс</label>
+    </div>
+
+    <div class="controls">
+        <button class="primary" id="save">Сохранить</button>
+        <button class="secondary" id="exportBtn">Экспорт</button>
+        <button class="secondary" id="importBtn">Импорт</button>
+        <input type="file" id="importFile" style="display:none" accept=".json">
+    </div>
+    <div id="status"></div>
+
+    <script src="options.js"></script>
+</body>
+</html>
