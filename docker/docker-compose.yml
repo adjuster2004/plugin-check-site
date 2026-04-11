@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  ssl-checker:
+    build: .
+    container_name: ssl-checker-api
+    ports:
+      - "9090:9090"
+    restart: unless-stopped # Контейнер будет перезапускаться при падении и после перезагрузки сервера (кроме случаев, когда вы остановили его вручную)
