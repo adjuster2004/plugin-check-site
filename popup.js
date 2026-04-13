@@ -16,7 +16,6 @@ async function performCheck() {
 
     chrome.storage.local.get(['domains', 'apiUrl', 'warningDays'], async (config) => {
         if (!config.apiUrl || !config.domains || config.domains.length === 0) {
-            // Уточнили текст ошибки
             resultsDiv.innerHTML = '<div class="result-item error">Укажите URL API и список сайтов в настройках (⚙️).</div>';
             resetUI(loader, btn);
             return;
@@ -26,52 +25,66 @@ async function performCheck() {
             const response = await fetch(`${config.apiUrl}?domains=${config.domains.join(',')}`);
             const data = await response.json();
             
-            let problemDomains = []; // Собираем имена проблемных доменов в массив
+            let problemDomains = []; 
 
             for (const [domain, info] of Object.entries(data)) {
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'result-item';
                 
-                let statusText = '';
-
-                if (info.status === 'error') {
-                    problemDomains.push(domain);
-                    itemDiv.classList.add('error');
-                    statusText = `🚫 Ошибка: ${info.message || 'Сбой соединения'}`;
-                } else if (info.days_left <= config.warningDays) {
-                    problemDomains.push(domain);
-                    itemDiv.classList.add('warning');
-                    statusText = `🤔 Истекает через ${info.days_left} дн.`;
+                // --- Анализ SSL ---
+                let sslText = '';
+                let hasSslError = false;
+                if (info.ssl.status === 'error') {
+                    hasSslError = true;
+                    sslText = `🚫 SSL: Ошибка (${info.ssl.message})`;
+                } else if (info.ssl.days_left <= config.warningDays) {
+                    hasSslError = true;
+                    sslText = `🤔 SSL: ${info.ssl.days_left} дн.`;
                 } else {
-                    itemDiv.classList.add('ok');
-                    statusText = `Осталось дней: ${info.days_left}`;
+                    sslText = `🔐 SSL: ${info.ssl.days_left} дн.`;
                 }
 
-                itemDiv.innerHTML = `<strong>${domain}</strong><br>${statusText}`;
+                // --- Анализ Домена ---
+                let domainText = '';
+                let hasDomainError = false;
+                if (info.domain.status === 'error') {
+                    hasDomainError = true;
+                    domainText = `🚫 Домен: Ошибка WHOIS`;
+                } else if (info.domain.days_left <= config.warningDays) {
+                    hasDomainError = true;
+                    domainText = `🤔 Домен: ${info.domain.days_left} дн.`;
+                } else {
+                    domainText = `🌐 Домен: ${info.domain.days_left} дн.`;
+                }
+
+                // --- Определение общего статуса плашки ---
+                if (hasSslError || hasDomainError) {
+                    problemDomains.push(domain);
+                    itemDiv.classList.add('error'); // Можно разделить на warning/error при желании
+                } else {
+                    itemDiv.classList.add('ok');
+                }
+
+                itemDiv.innerHTML = `<strong>${domain}</strong><br>
+                                     <span style="font-size: 12px; color: #42526e;">${sslText}</span><br>
+                                     <span style="font-size: 12px; color: #42526e;">${domainText}</span>`;
                 resultsDiv.appendChild(itemDiv);
             }
 
-            // Передаем именно массив в функцию уведомлений
             sendSystemNotification(problemDomains, Object.keys(data).length);
 
         } catch (error) {
-            resultsDiv.innerHTML = `<div class="result-item error">🚫 Ошибка API. Проверьте Docker.</div>`;
+            resultsDiv.innerHTML = `<div class="result-item error">🚫 Ошибка связи с API.</div>`;
         }
         resetUI(loader, btn);
     });
 }
 
 function sendSystemNotification(problemDomains, total) {
-    let title = "Проверка SSL завершена";
-    let message = "";
-
-    if (problemDomains.length > 0) {
-        // Если массив не пустой, выводим домены с ошибками
-        const domainsText = problemDomains.join(', ');
-        message = `Проблемы (${problemDomains.length}/${total}): ${domainsText}`;
-    } else {
-        message = `Все сертификаты (${total} шт.) в порядке!`;
-    }
+    let title = "Проверка завершена";
+    let message = problemDomains.length > 0 
+        ? `Проблемы (${problemDomains.length}/${total}): ${problemDomains.join(', ')}` 
+        : `Все сайты (${total} шт.) в порядке!`;
     
     chrome.notifications.create({
         type: "basic",
