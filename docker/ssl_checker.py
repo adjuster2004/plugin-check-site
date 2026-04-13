@@ -4,12 +4,13 @@ import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import urllib.parse
-import urllib.request  # <-- Добавили для запросов к RDAP
+import urllib.request
 import os
 import certifi
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 import whois
+import re
 
 class SSLCheckHandler(BaseHTTPRequestHandler):
     
@@ -21,7 +22,6 @@ class SSLCheckHandler(BaseHTTPRequestHandler):
     def get_ssl_expiry(self, hostname):
         context = ssl.create_default_context(cafile=certifi.where())
         
-        # Внутренняя функция для красивого форматирования ошибок
         def format_error(e):
             err_str = str(e).lower()
             if "timeout" in err_str or "timed out" in err_str:
@@ -29,7 +29,6 @@ class SSLCheckHandler(BaseHTTPRequestHandler):
             elif "refused" in err_str or "reset" in err_str:
                 return {"status": "error", "message": "HTTPS (порт 443) закрыт"}
             else:
-                # Все остальные сбои рукопожатия, версий и протоколов
                 return {"status": "error", "message": "На сайте не используется HTTPS"}
 
         try:
@@ -50,88 +49,148 @@ class SSLCheckHandler(BaseHTTPRequestHandler):
         except Exception as e:
             return format_error(e)
 
-    # --- БЛОК 2: Умный поиск домена (RDAP + WHOIS) ---
-    def get_domain_expiry(self, domain):
+    # --- БЛОК 2: Низкоуровневый WHOIS (План В) ---
+    def get_raw_whois(self, domain, whois_server=None):
+        if whois_server is None:
+            tld = domain.split('.')[-1]
+            whois_server = f"whois.nic.{tld}"
         try:
-            domain = domain.encode('idna').decode('utf-8')
-        except Exception:
-            pass
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(5)
+                s.connect((whois_server, 43))
+                s.send(f"{domain}\r\n".encode())
+                response = b""
+                while True:
+                    data = s.recv(4096)
+                    if not data:
+                        break
+                    response += data
+            return response.decode('utf-8', errors='ignore')
+        except:
+            return ""
 
-        parts = domain.split('.')
-        
+    # --- Функция для .рф через HTTP-интерфейс cctld.ru ---
+    def get_cctld_expiry(self, domain):
+        """
+        Проверка доменов .рф через официальный whois-сервис cctld.ru (HTTP)
+        domain должен быть в punycode или кириллицей (функция сама преобразует)
+        """
+        # Если домен уже в punycode (xn--...), преобразуем в читаемый вид для URL
+        if domain.startswith('xn--'):
+            try:
+                domain_cyr = domain.encode('utf-8').decode('idna')
+            except:
+                domain_cyr = domain
+        else:
+            domain_cyr = domain
+
+        # Кодируем кириллический домен для GET-параметра
+        encoded_domain = urllib.parse.quote(domain_cyr)
+        url = f"https://cctld.ru/service/whois/?domain={encoded_domain}"
+
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                html = response.read().decode('utf-8')
+        except Exception as e:
+            return {"status": "error", "message": f"Ошибка HTTP-запроса: {str(e)}"}
+
+        # Ищем дату истечения в HTML
+        patterns = [
+            r'paid-till:\s*(\d{4}-\d{2}-\d{2})',
+            r'expire-date:\s*(\d{4}-\d{2}-\d{2})',
+            r'Срок регистрации:\s*(\d{2}\.\d{2}\.\d{4})',
+            r'Registry Expiry Date:\s*(\d{4}-\d{2}-\d{2})',
+            r'до\s+(\d{2}\.\d{2}\.\d{4})',
+            r'(\d{4}-\d{2}-\d{2})\s*\(expir',
+            r'(\d{2}\.\d{2}\.\d{4})'   # последнее средство – любая дата в формате дд.мм.гггг
+        ]
+
+        for pat in patterns:
+            match = re.search(pat, html, re.IGNORECASE)
+            if match:
+                date_str = match.group(1)
+                # Пробуем разные форматы
+                for fmt in ('%Y-%m-%d', '%d.%m.%Y'):
+                    try:
+                        exp_date = datetime.datetime.strptime(date_str, fmt)
+                        days_left = (exp_date - datetime.datetime.now()).days
+                        return {"status": "ok", "days_left": days_left}
+                    except ValueError:
+                        continue
+        return {"status": "error", "message": "Не удалось извлечь дату истечения из ответа cctld.ru"}
+
+    def get_domain_expiry(self, domain):
+        # Преобразуем IDN в punycode для запросов
+        try:
+            domain_puny = domain.encode('idna').decode('utf-8')
+        except:
+            domain_puny = domain
+
+        # Специальная проверка для доменов .рф
+        if domain_puny.endswith('.xn--p1ai') or domain.endswith('.рф'):
+            result = self.get_cctld_expiry(domain_puny)
+            if result["status"] == "ok":
+                return result
+
+        parts = domain_puny.split('.')
         for i in range(len(parts) - 1):
             check_domain = '.'.join(parts[i:])
             expiration_date = None
             
-            # --- ПОПЫТКА 1: Современный протокол RDAP (как у ICANN) ---
-            # Работает по HTTPS (порт 443) и возвращает строгий JSON
+            # 1. RDAP
             try:
                 url = f"https://rdap.org/domain/{check_domain}"
-                req = urllib.request.Request(url, headers={'Accept': 'application/rdap+json', 'User-Agent': 'SSL-Monitor-Bot/1.0'})
+                req = urllib.request.Request(url, headers={'Accept': 'application/rdap+json'})
                 with urllib.request.urlopen(req, timeout=5) as response:
                     rdap_data = json.loads(response.read().decode())
-                    
-                    # Ищем событие expiration в структурированном JSON
                     for event in rdap_data.get('events', []):
-                        action = event.get('eventAction', '').lower()
-                        if action in ['expiration', 'registrar expiration', 'registry expiration']:
-                            date_str = event.get('eventDate')
-                            if date_str:
-                                # Формат RDAP: "2026-06-08T04:52:35Z"
-                                expiration_date = datetime.datetime.strptime(date_str[:10], '%Y-%m-%d')
-                                break
-            except urllib.error.HTTPError as e:
-                # Если 404, значит это поддомен (например crm.site.com), идем на следующий круг
-                pass
-            except Exception:
+                        if event.get('eventAction', '').lower() in ['expiration', 'registrar expiration', 'registry expiration']:
+                            expiration_date = datetime.datetime.strptime(event.get('eventDate')[:10], '%Y-%m-%d')
+                            break
+            except:
                 pass
 
-            # --- ПОПЫТКА 2: Классическая библиотека (запасной вариант для старых зон) ---
+            # 2. Библиотека whois
             if not expiration_date:
                 try:
                     w = whois.whois(check_domain)
                     if w.expiration_date:
-                        expiration_date = w.expiration_date
-                        if isinstance(expiration_date, list):
-                            expiration_date = expiration_date[0]
-                except Exception:
+                        expiration_date = w.expiration_date[0] if isinstance(w.expiration_date, list) else w.expiration_date
+                except:
                     pass
+
+            # 3. Raw whois (для обычных зон)
+            if not expiration_date:
+                raw_text = self.get_raw_whois(check_domain)
+                match = re.search(r'(?i)(?:expiry date|expiration date|paid-till|expire date|valid until)[^\d]*(\d{4}[-./]\d{2}[-./]\d{2})', raw_text)
+                if match:
+                    try:
+                        expiration_date = datetime.datetime.strptime(match.group(1).replace('.','-').replace('/','-'), '%Y-%m-%d')
+                    except:
+                        pass
             
-            # --- Финализация ---
             if expiration_date:
                 if hasattr(expiration_date, 'tzinfo') and expiration_date.tzinfo is not None:
                     expiration_date = expiration_date.replace(tzinfo=None)
-                    
                 days_left = (expiration_date - datetime.datetime.now()).days
                 return {"status": "ok", "days_left": days_left}
                 
-        return {"status": "error", "message": "Не удалось определить срок (возможно, зона скрыта)"}
+        return {"status": "error", "message": "Не удалось определить срок"}
 
-    # --- БЛОК 3: Маршрутизация и API ---
     def do_GET(self):
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
-
-        query_components = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        
-        if 'domains' in query_components:
-            domains = query_components['domains'][0].split(',')
-            results = {}
-            for domain in domains:
-                clean_domain = domain.strip()
-                if clean_domain:
-                    results[clean_domain] = {
-                        "ssl": self.get_ssl_expiry(clean_domain),
-                        "domain": self.get_domain_expiry(clean_domain)
-                    }
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        if 'domains' in query:
+            domains = query['domains'][0].split(',')
+            results = {d.strip(): {"ssl": self.get_ssl_expiry(d.strip()), "domain": self.get_domain_expiry(d.strip())} for d in domains if d.strip()}
             self.wfile.write(json.dumps(results).encode())
         else:
-            self.wfile.write(json.dumps({"error": "No domains provided"}).encode())
+            self.wfile.write(json.dumps({"error": "No domains"}).encode())
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 9090))
-    server = HTTPServer(('0.0.0.0', port), SSLCheckHandler)
-    print(f"Monitor API running on port {port}")
+    server = HTTPServer(('0.0.0.0', int(os.environ.get('PORT', 9090))), SSLCheckHandler)
     server.serve_forever()
