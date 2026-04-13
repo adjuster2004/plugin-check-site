@@ -2,8 +2,9 @@ FROM python:3.11-alpine
 
 WORKDIR /app
 
-# Устанавливаем библиотеку certifi
-RUN pip install --no-cache-dir certifi cryptography
+# Устанавливаем whois (системную утилиту) и python-библиотеки
+RUN apk add --no-cache whois && \
+    pip install --no-cache-dir certifi cryptography python-whois
 
 COPY ssl_checker.py .
 
