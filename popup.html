@@ -3,30 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <style>
-        body { font-family: sans-serif; padding: 10px; width: 320px; margin: 0; background: #f4f5f7; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .header h3 { margin: 0; font-size: 16px; color: #172b4d; }
-        
-        /* Ссылка на настройки */
-        .settings-link { cursor: pointer; color: #0052cc; font-size: 12px; text-decoration: none; display: flex; align-items: center; }
-        .settings-link:hover { text-decoration: underline; }
+		/* Настройки для всего документа */
+		html, body {
+			margin: 0;
+			padding: 0;
+			/* Убираем фиксированную высоту, чтобы она подстраивалась под контент */
+			height: auto; 
+			font-family: sans-serif;
+			background: #f4f5f7;
+		}
 
-        button { width: 100%; padding: 10px; background: #0052cc; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold; }
-        button:hover { background: #0047b3; }
-        button:disabled { background: #a5bdec; }
-        
-        #results { margin-top: 15px; max-height: 300px; overflow-y: auto; }
-        .result-item { margin-bottom: 8px; padding: 10px; border-radius: 4px; border: 1px solid #dfe1e6; background: white; font-size: 13px; }
-        .ok { border-left: 4px solid #36b37e; }
-        .warning { border-left: 4px solid #ffab00; }
-        .error { border-left: 4px solid #ff5630; }
-        
-        .loader { display: none; text-align: center; margin: 15px 0; font-size: 12px; color: #6b778c; }
-    </style>
+		body {
+			/* Делаем окно шире */
+			width: 500px; 
+			padding: 15px;
+			box-sizing: border-box;
+			/* Ограничиваем максимальную высоту по лимитам Chrome (600px) */
+			max-height: 600px;
+			display: flex;
+			flex-direction: column;
+		}
+
+		.header {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			margin-bottom: 12px;
+			flex-shrink: 0;
+		}
+
+		.header h3 { margin: 0; font-size: 18px; color: #172b4d; }
+		
+		.settings-link { 
+			cursor: pointer; 
+			color: #0052cc; 
+			font-size: 13px; 
+			text-decoration: none; 
+		}
+
+		button { 
+			width: 100%; 
+			padding: 12px; 
+			background: #0052cc; 
+			color: white; 
+			border: none; 
+			border-radius: 4px; 
+			cursor: pointer; 
+			font-size: 14px; 
+			font-weight: bold;
+			flex-shrink: 0;
+		}
+
+		/* Контейнер результатов */
+		#results { 
+			margin-top: 15px;
+			/* Разрешаем внутреннюю прокрутку, если доменов ОЧЕНЬ много */
+			overflow-y: auto; 
+			/* Плавное расширение */
+			flex-grow: 1;
+		}
+
+		.result-item { 
+			margin-bottom: 10px; 
+			padding: 12px; 
+			border-radius: 6px; 
+			border: 1px solid #dfe1e6; 
+			background: white; 
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+		}
+
+		.domain-info { display: flex; flex-direction: column; gap: 4px; }
+		.domain-name { font-weight: bold; font-size: 14px; color: #172b4d; }
+		.status-line { font-size: 12px; color: #42526e; }
+
+		/* Цвета полосок */
+		.ok { border-left: 5px solid #36b37e; }
+		.warning { border-left: 5px solid #ffab00; }
+		.error { border-left: 5px solid #ff5630; }
+
+		.loader { display: none; text-align: center; margin: 15px 0; font-size: 13px; color: #6b778c; }
+	</style>
 </head>
 <body>
     <div class="header">
-        <h3>SSL Monitor</h3>
+        <h3>Site Monitor</h3>
         <a id="openSettings" class="settings-link">⚙️ Настройки</a>
     </div>
 
