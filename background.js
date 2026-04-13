@@ -58,7 +58,10 @@ async function runBackgroundCheck() {
             let problemDomains = [];
 
             for (const [domain, info] of Object.entries(data)) {
-                if (info.status === 'error' || info.days_left <= config.warningDays) {
+                let hasSslIssue = info.ssl.status === 'error' || info.ssl.days_left <= config.warningDays;
+                let hasDomainIssue = info.domain.status === 'error' || info.domain.days_left <= config.warningDays;
+
+                if (hasSslIssue || hasDomainIssue) {
                     problemDomains.push(domain);
                 }
             }
@@ -74,7 +77,7 @@ async function runBackgroundCheck() {
                 });
             }
         } catch (error) {
-            console.error("[SSL Monitor] Ошибка API при фоновой проверке", error);
+            console.error("[Site Monitor] Ошибка API при фоновой проверке", error);
         }
     });
 }
