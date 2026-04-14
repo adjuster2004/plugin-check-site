@@ -1,19 +1,29 @@
 {
   "manifest_version": 3,
-  "name": "SSL Expiry Monitor",
+  "name": "Site Expiry Monitor",
   "version": "1.1",
-  "description": "Периодическая проверка сроков действия SSL сертификатов",
+  "description": "Периодическая проверка сроков действия SSL сертификатов и продления сайтов",
   "permissions": [
     "alarms",
     "storage",
     "notifications"
   ],
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Состояние SSL",
-    "default_popup": "popup.html" 
+    "default_title": "Состояние Site",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
   },
   "options_ui": {
     "page": "options.html",
