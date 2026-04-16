@@ -50,11 +50,23 @@ class SSLCheckHandler(BaseHTTPRequestHandler):
             return format_error(e)
 
     # --- БЛОК 2: Низкоуровневый WHOIS (План В) ---
-    def get_raw_whois(self, domain, whois_server=None):
-        if whois_server is None:
-            tld = domain.split('.')[-1]
-            whois_server = f"whois.nic.{tld}"
+    def get_raw_whois(self, domain):
         try:
+            tld = domain.split('.')[-1]
+            
+            # Словарь исключений для национальных зон (ccTLD)
+            custom_servers = {
+                'am': 'whois.amnic.net',
+                'ru': 'whois.tcinet.ru',
+                'рф': 'whois.tcinet.ru',
+                'su': 'whois.tcinet.ru',
+                'ua': 'whois.ua',
+                'kz': 'whois.nic.kz',
+                'by': 'whois.cctld.by'
+            }
+            # Берем сервер из словаря, либо используем стандартный ICANN
+            whois_server = custom_servers.get(tld, f"whois.nic.{tld}")
+            
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(5)
                 s.connect((whois_server, 43))
@@ -62,8 +74,7 @@ class SSLCheckHandler(BaseHTTPRequestHandler):
                 response = b""
                 while True:
                     data = s.recv(4096)
-                    if not data:
-                        break
+                    if not data: break
                     response += data
             return response.decode('utf-8', errors='ignore')
         except:
@@ -160,13 +171,18 @@ class SSLCheckHandler(BaseHTTPRequestHandler):
                 except:
                     pass
 
-            # 3. Raw whois (для обычных зон)
+            # 3. План В: Прямой запрос к серверу зоны
             if not expiration_date:
                 raw_text = self.get_raw_whois(check_domain)
-                match = re.search(r'(?i)(?:expiry date|expiration date|paid-till|expire date|valid until)[^\d]*(\d{4}[-./]\d{2}[-./]\d{2})', raw_text)
+                # Расширенная регулярка ловит больше вариантов написания
+                match = re.search(r'(?i)(?:expiry date|expiration date|paid-till|expire date|valid until|expires|expiration)[^\d]*(\d{4}[-./]\d{2}[-./]\d{2}|\d{2}[-./]\d{2}[-./]\d{4})', raw_text)
                 if match:
                     try:
-                        expiration_date = datetime.datetime.strptime(match.group(1).replace('.','-').replace('/','-'), '%Y-%m-%d')
+                        date_str = match.group(1).replace('.','-').replace('/','-')
+                        if len(date_str.split('-')[0]) == 4:
+                            expiration_date = datetime.datetime.strptime(date_str, '%Y-%m-%d')
+                        else:
+                            expiration_date = datetime.datetime.strptime(date_str, '%d-%m-%Y')
                     except:
                         pass
             
